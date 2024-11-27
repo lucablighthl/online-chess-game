@@ -1331,57 +1331,67 @@ export default class Scene extends Component {
 
     return mesh;
     }
-    pawnTransform( type ) {
-        if( !type || type === '' )
-            return;
+    pawnTransform(type) {
+    if (!type) return;
 
-        const currentTurn = this.props.mode === gameModes['P2P'] ? this.currentTurn : this.props.game.board.configuration.turn;
-        let pieceType;
-        if( type === 'Knight' ) {
-            pieceType = currentTurn === 'white' ? 'N' : 'n';
-        } else if( type === 'Bishop' ) {
-            pieceType = currentTurn === 'white' ? 'B' : 'b';
-        } else if( type === 'Rook' ) {
-            pieceType = currentTurn === 'white' ? 'R' : 'r';
-        } else if( type === 'Queen' ) {
-            pieceType = currentTurn === 'white' ? 'Q' : 'q';
-        }
+    const currentTurn = this.props.mode === gameModes['P2P']
+        ? this.currentTurn
+        : this.props.game.board.configuration.turn;
 
-        const targetPiece = this.boardPiecesArray[ this.state.pawnTransProps.fromIndex ];
-        targetPiece.pieceType = pieceType;
+    const pieceTypeMap = {
+        'Knight': { white: 'N', black: 'n' },
+        'Bishop': { white: 'B', black: 'b' },
+        'Rook': { white: 'R', black: 'r' },
+        'Queen': { white: 'Q', black: 'q' },
+    };
 
-        this.scene.remove( targetPiece.mesh );
+    const pieceType = pieceTypeMap[type]?.[currentTurn];
+    if (!pieceType) return;
 
-        targetPiece.mesh = this.getTargetMesh(pieceType);
-        const position = getMeshPosition( targetPiece.rowIndex, targetPiece.colIndex );
-        targetPiece.mesh.position.set(position.x, position.y, position.z);
-        targetPiece.mesh.scale.set(modelSize, modelSize, modelSize);
-        targetPiece.mesh.rotation.y = pieceType === pieceType.toUpperCase() ? Math.PI : 0;
+    const targetPiece = this.boardPiecesArray[this.state.pawnTransProps.fromIndex];
+    targetPiece.pieceType = pieceType;
 
-        this.scene.add( targetPiece.mesh );
+    // Remove old mesh and update
+    this.scene.remove(targetPiece.mesh);
+
+    targetPiece.mesh = this.getTargetMesh(pieceType);
+    const position = getMeshPosition(targetPiece.rowIndex, targetPiece.colIndex);
+    targetPiece.mesh.position.set(position.x, position.y, position.z);
+    targetPiece.mesh.scale.set(modelSize, modelSize, modelSize);
+    targetPiece.mesh.rotation.y = pieceType === pieceType.toUpperCase() ? Math.PI : 0;
+
+    this.scene.add(targetPiece.mesh);
+
+    // Update state
+    this.setState({
+        showPieceSelectModal: false,
+        pawnTransProps: null,
+    });
+
+    // Emit or update game state based on mode
+    if (this.props.mode === gameModes['P2P']) {
+        this.socket.emit(socketEvents['CS_PawnTransform'], {
+            from: this.state.pawnTransProps.from,
+            to: this.state.pawnTransProps.to,
+            pieceType,
+        });
+    } else {
+        this.props.game.move(this.state.pawnTransProps.from, this.state.pawnTransProps.to);
+        this.props.game.setPiece(this.state.pawnTransProps.to, pieceType);
 
         this.setState({
-            showPieceSelectModal: false,
-            pawnTransProps: null,
+            myTurn: this.props.side === this.props.game.board.configuration.turn,
         });
 
-        if( this.props.mode === gameModes['P2P'] ) {
-            this.socket.emit( socketEvents['CS_PawnTransform'], { from: this.state.pawnTransProps.from, to: this.state.pawnTransProps.to, pieceType: pieceType } );
-        } else {
-            this.props.game.move( this.state.pawnTransProps.from, this.state.pawnTransProps.to );
-            this.props.game.setPiece( this.state.pawnTransProps.to, pieceType );
-    
-            this.setState({
-                myTurn: this.props.side === this.props.game.board.configuration.turn
-            })
+        this.startNewTimer();
 
-            this.startNewTimer();
-
-            if( this.props.mode === gameModes['P2E'] ) {    // ai action after select the piece 
-                this.aiMoveAction(this.props.aiLevel);
-            }
+        if (this.props.mode === gameModes['P2E']) {
+            // AI action after selecting the piece
+            this.aiMoveAction(this.props.aiLevel);
         }
     }
+}
+
 
     selectPiece( piece ) {
         if( this.selectedPiece ) {
