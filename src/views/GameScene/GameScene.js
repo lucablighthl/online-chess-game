@@ -1555,106 +1555,101 @@ export default class Scene extends Component {
     }
 
     handleChangeTurn(params) {
-        this.isFinished = params.isFinished ? true : false;
-
+        this.isFinished = !!params.isFinished;
         this.currentTurn = params.currentTurn;
         this.currentPlayer = params.currentPlayer;
-
-        if( this.currentPlayer === this.socket.id ) {
-            this.setState({
-                myTurn: true,
-            })
-            this.side = this.currentTurn;
-        } else {
-            this.side = this.currentTurn === 'white' ? 'black' : 'white';
-            this.setState({
-                myTurn: false,
-            })
-        }
-
+    
+        // Update current side and turn state
+        const isMyTurn = this.currentPlayer === this.socket.id;
+        this.side = isMyTurn ? this.currentTurn : (this.currentTurn === 'white' ? 'black' : 'white');
+        this.setState({ myTurn: isMyTurn });
+    
+        // Update game state properties
         this.dangerKing = params.dangerKing;
         this.lastMoveHistory = params.lastMoveHistory;
-
-        if( params.randomItems ) {
-            if( this.itemMeshes ) {
-                for( let i = 0; i < this.itemMeshes.length; i++ ) {
-                    this.scene.remove( this.itemMeshes[i].mesh );
-                }
-            }
-
+    
+        // Handle random items
+        if (params.randomItems) {
+            this.cleanupItemMeshes(); // Clean up existing meshes
             this.randomItems = params.randomItems;
-
-            this.itemMeshes = [];
-            this.randomItems.forEach((item) => {
-                const newMesh = {};
-                newMesh.position = item.position;
-                newMesh.type = item.type;
-
-                if( newMesh.type !== heroItems['thunderstorm'] ) {
-                    let texture;
-                    if( newMesh.type === heroItems['iceWall'] ) {
-                        texture = new THREE.TextureLoader().load(iceWall);
-                    } else if( newMesh.type === heroItems['petrify'] ) {
-                        texture = new THREE.TextureLoader().load(petrify);
-                    } else if( newMesh.type === heroItems['jumpyShoe'] ) {
-                        texture = new THREE.TextureLoader().load(jumpyShoe);
-                    } else if( newMesh.type === heroItems['springPad'] ) {
-                        texture = new THREE.TextureLoader().load(springPad);
-                    } else if( newMesh.type === heroItems['thunderstorm'] ) {
-                        texture = new THREE.TextureLoader().load(thunderstorm);
-                    }
-    
-                    const itemGeo = new THREE.PlaneBufferGeometry(0.8, 0.8, 100, 100)
-                    const itemMaterial = new THREE.MeshStandardMaterial({
-                        side: THREE.DoubleSide,
-                        roughness: 1,
-                        metalness: 0,
-                        refractionRatio: 0,
-                        map: texture,
-                        transparent: true,
-                    });
-                    const itemMesh = new THREE.Mesh( itemGeo, itemMaterial );
-
-                    itemMesh.rotateX( ang2Rad( this.side === 'white' ? -90 : 90) );
-                    itemMesh.rotateY( ang2Rad( this.side === 'white' ? 0 : 180 ) );
-    
-                    const itemIndex = getMatrixIndexFromFen( newMesh.position );
-                    itemMesh.position.set( itemIndex.colIndex * tileSize - tileSize * 3.5, 0.6, -( itemIndex.rowIndex * tileSize - tileSize * 3.5 ) );
-    
-                    this.scene.add(itemMesh);
-    
-                    newMesh.mesh = itemMesh;
-    
-                    this.itemMeshes.push( newMesh );
-                }
-            })
+            this.itemMeshes = this.randomItems.map(this.createItemMesh.bind(this));
         }
-
-        if( params.userItems ) {
-            const myItems = params.userItems[ this.socket.id ];
-            this.setState({
-                myItems: myItems
-            });
+    
+        // Update user items
+        if (params.userItems) {
+            const myItems = params.userItems[this.socket.id];
+            this.setState({ myItems });
         }
-
-        if( params.obstacleArray ) {
-            this.setObstacles( params.obstacleArray )
+    
+        // Update obstacles
+        if (params.obstacleArray) {
+            this.setObstacles(params.obstacleArray);
         }
-
+    
+        // Reset current state and clear temporary meshes
         this.setState({ currentItem: null });
-        if( this.currentMouseMeshes ) {
-            this.currentMouseMeshes.forEach((item) => {
-                this.scene.remove(item);
-            });
-        }
-
-        if( this.selectedPiece ) {
+        this.cleanupMouseMeshes();
+    
+        // Reset selected piece
+        if (this.selectedPiece) {
             this.selectedPiece.mesh.position.y = this.selectedPiece.currentY;
             this.selectedPiece = null;
         }
         this.possibleMoves = [];
+    
         console.error(params);
     }
+    
+    cleanupItemMeshes() {
+        if (this.itemMeshes) {
+            this.itemMeshes.forEach(item => this.scene.remove(item.mesh));
+        }
+    }
+    
+    cleanupMouseMeshes() {
+        if (this.currentMouseMeshes) {
+            this.currentMouseMeshes.forEach(mesh => this.scene.remove(mesh));
+        }
+    }
+    
+    createItemMesh(item) {
+        const textureMap = {
+            [heroItems['iceWall']]: iceWall,
+            [heroItems['petrify']]: petrify,
+            [heroItems['jumpyShoe']]: jumpyShoe,
+            [heroItems['springPad']]: springPad,
+            [heroItems['thunderstorm']]: thunderstorm,
+        };
+    
+        if (item.type === heroItems['thunderstorm']) return null;
+    
+        const texture = new THREE.TextureLoader().load(textureMap[item.type]);
+        const itemGeo = new THREE.PlaneBufferGeometry(0.8, 0.8, 100, 100);
+        const itemMaterial = new THREE.MeshStandardMaterial({
+            side: THREE.DoubleSide,
+            roughness: 1,
+            metalness: 0,
+            refractionRatio: 0,
+            map: texture,
+            transparent: true,
+        });
+    
+        const itemMesh = new THREE.Mesh(itemGeo, itemMaterial);
+        itemMesh.rotateX(ang2Rad(this.side === 'white' ? -90 : 90));
+        itemMesh.rotateY(ang2Rad(this.side === 'white' ? 0 : 180));
+    
+        const itemIndex = getMatrixIndexFromFen(item.position);
+        itemMesh.position.set(
+            itemIndex.colIndex * tileSize - tileSize * 3.5,
+            0.6,
+            -(itemIndex.rowIndex * tileSize - tileSize * 3.5)
+        );
+    
+        this.scene.add(itemMesh);
+    
+        return { ...item, mesh: itemMesh };
+    }
+    
 
     handleSelectPiece(params) {
         const { fen, possibleMoves } = params;
