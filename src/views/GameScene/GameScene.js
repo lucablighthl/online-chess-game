@@ -1292,52 +1292,44 @@ export default class Scene extends Component {
         return isFinished;
     }
     getTargetMesh(type) {
-        let mesh;
-        if( type === 'N' || type === 'n' ) {
-            mesh = this.meshArray['knight'].clone();
-        }
-        if( type === 'B' || type === 'b' ) {
-            mesh = this.meshArray['bishop'].clone();
-        }
-        if( type === 'R' || type === 'r' ) {
-            mesh = this.meshArray['rook'].clone();
-        }
-        if( type === 'Q' ) {
-            mesh = this.meshArray['queen'].clone();
-        }
-        if( type === 'q' ) {
-            mesh = this.meshArray['fox'].clone();
-        }
-        if (type === type.toUpperCase()) {
-            mesh.traverse(n => {
-                if ( n.isMesh ) {
-                    const material = new THREE.MeshStandardMaterial({
-                        color: '#d29868',
-                        roughness: 0.3,
-                        metalness: 0.2,
-                        side: THREE.DoubleSide,
-                    });
-                    n.material= material
-                }
-            });
+    const typeMap = {
+        'N': 'knight',
+        'n': 'knight',
+        'B': 'bishop',
+        'b': 'bishop',
+        'R': 'rook',
+        'r': 'rook',
+        'Q': 'queen',
+        'q': 'fox',
+    };
 
-            this.whiteTeamObjects.push(mesh);
-        } else {
-            mesh.traverse(n => {
-                if ( n.isMesh ) {
-                    const material = new THREE.MeshStandardMaterial({
-                        color: '#0e191f',
-                        roughness: 0.3,
-                        metalness: 0.2,
-                        side: THREE.DoubleSide,
-                    });
-                    n.material= material
-                }
-            });
+    const meshKey = typeMap[type];
+    if (!meshKey) return null; // Return early if the type is invalid.
 
-            this.blackTeamObjects.push(mesh);
-        }
-        return mesh
+    const mesh = this.meshArray[meshKey].clone();
+
+    const assignMaterial = (color) => {
+        mesh.traverse(n => {
+            if (n.isMesh) {
+                n.material = new THREE.MeshStandardMaterial({
+                    color,
+                    roughness: 0.3,
+                    metalness: 0.2,
+                    side: THREE.DoubleSide,
+                });
+            }
+        });
+    };
+
+    if (type === type.toUpperCase()) {
+        assignMaterial('#d29868');
+        this.whiteTeamObjects.push(mesh);
+    } else {
+        assignMaterial('#0e191f');
+        this.blackTeamObjects.push(mesh);
+    }
+
+    return mesh;
     }
     pawnTransform( type ) {
         if( !type || type === '' )
