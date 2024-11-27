@@ -1292,104 +1292,106 @@ export default class Scene extends Component {
         return isFinished;
     }
     getTargetMesh(type) {
-        let mesh;
-        if( type === 'N' || type === 'n' ) {
-            mesh = this.meshArray['knight'].clone();
-        }
-        if( type === 'B' || type === 'b' ) {
-            mesh = this.meshArray['bishop'].clone();
-        }
-        if( type === 'R' || type === 'r' ) {
-            mesh = this.meshArray['rook'].clone();
-        }
-        if( type === 'Q' ) {
-            mesh = this.meshArray['queen'].clone();
-        }
-        if( type === 'q' ) {
-            mesh = this.meshArray['fox'].clone();
-        }
-        if (type === type.toUpperCase()) {
-            mesh.traverse(n => {
-                if ( n.isMesh ) {
-                    const material = new THREE.MeshStandardMaterial({
-                        color: '#d29868',
-                        roughness: 0.3,
-                        metalness: 0.2,
-                        side: THREE.DoubleSide,
-                    });
-                    n.material= material
-                }
-            });
+    const typeMap = {
+        'N': 'knight',
+        'n': 'knight',
+        'B': 'bishop',
+        'b': 'bishop',
+        'R': 'rook',
+        'r': 'rook',
+        'Q': 'queen',
+        'q': 'fox',
+    };
 
-            this.whiteTeamObjects.push(mesh);
-        } else {
-            mesh.traverse(n => {
-                if ( n.isMesh ) {
-                    const material = new THREE.MeshStandardMaterial({
-                        color: '#0e191f',
-                        roughness: 0.3,
-                        metalness: 0.2,
-                        side: THREE.DoubleSide,
-                    });
-                    n.material= material
-                }
-            });
+    const meshKey = typeMap[type];
+    if (!meshKey) return null; // Return early if the type is invalid.
 
-            this.blackTeamObjects.push(mesh);
-        }
-        return mesh
+    const mesh = this.meshArray[meshKey].clone();
+
+    const assignMaterial = (color) => {
+        mesh.traverse(n => {
+            if (n.isMesh) {
+                n.material = new THREE.MeshStandardMaterial({
+                    color,
+                    roughness: 0.3,
+                    metalness: 0.2,
+                    side: THREE.DoubleSide,
+                });
+            }
+        });
+    };
+
+    if (type === type.toUpperCase()) {
+        assignMaterial('#d29868');
+        this.whiteTeamObjects.push(mesh);
+    } else {
+        assignMaterial('#0e191f');
+        this.blackTeamObjects.push(mesh);
     }
-    pawnTransform( type ) {
-        if( !type || type === '' )
-            return;
 
-        const currentTurn = this.props.mode === gameModes['P2P'] ? this.currentTurn : this.props.game.board.configuration.turn;
-        let pieceType;
-        if( type === 'Knight' ) {
-            pieceType = currentTurn === 'white' ? 'N' : 'n';
-        } else if( type === 'Bishop' ) {
-            pieceType = currentTurn === 'white' ? 'B' : 'b';
-        } else if( type === 'Rook' ) {
-            pieceType = currentTurn === 'white' ? 'R' : 'r';
-        } else if( type === 'Queen' ) {
-            pieceType = currentTurn === 'white' ? 'Q' : 'q';
-        }
+    return mesh;
+    }
+    pawnTransform(type) {
+    if (!type) return;
 
-        const targetPiece = this.boardPiecesArray[ this.state.pawnTransProps.fromIndex ];
-        targetPiece.pieceType = pieceType;
+    const currentTurn = this.props.mode === gameModes['P2P']
+        ? this.currentTurn
+        : this.props.game.board.configuration.turn;
 
-        this.scene.remove( targetPiece.mesh );
+    const pieceTypeMap = {
+        'Knight': { white: 'N', black: 'n' },
+        'Bishop': { white: 'B', black: 'b' },
+        'Rook': { white: 'R', black: 'r' },
+        'Queen': { white: 'Q', black: 'q' },
+    };
 
-        targetPiece.mesh = this.getTargetMesh(pieceType);
-        const position = getMeshPosition( targetPiece.rowIndex, targetPiece.colIndex );
-        targetPiece.mesh.position.set(position.x, position.y, position.z);
-        targetPiece.mesh.scale.set(modelSize, modelSize, modelSize);
-        targetPiece.mesh.rotation.y = pieceType === pieceType.toUpperCase() ? Math.PI : 0;
+    const pieceType = pieceTypeMap[type]?.[currentTurn];
+    if (!pieceType) return;
 
-        this.scene.add( targetPiece.mesh );
+    const targetPiece = this.boardPiecesArray[this.state.pawnTransProps.fromIndex];
+    targetPiece.pieceType = pieceType;
+
+    // Remove old mesh and update
+    this.scene.remove(targetPiece.mesh);
+
+    targetPiece.mesh = this.getTargetMesh(pieceType);
+    const position = getMeshPosition(targetPiece.rowIndex, targetPiece.colIndex);
+    targetPiece.mesh.position.set(position.x, position.y, position.z);
+    targetPiece.mesh.scale.set(modelSize, modelSize, modelSize);
+    targetPiece.mesh.rotation.y = pieceType === pieceType.toUpperCase() ? Math.PI : 0;
+
+    this.scene.add(targetPiece.mesh);
+
+    // Update state
+    this.setState({
+        showPieceSelectModal: false,
+        pawnTransProps: null,
+    });
+
+    // Emit or update game state based on mode
+    if (this.props.mode === gameModes['P2P']) {
+        this.socket.emit(socketEvents['CS_PawnTransform'], {
+            from: this.state.pawnTransProps.from,
+            to: this.state.pawnTransProps.to,
+            pieceType,
+        });
+    } else {
+        this.props.game.move(this.state.pawnTransProps.from, this.state.pawnTransProps.to);
+        this.props.game.setPiece(this.state.pawnTransProps.to, pieceType);
 
         this.setState({
-            showPieceSelectModal: false,
-            pawnTransProps: null,
+            myTurn: this.props.side === this.props.game.board.configuration.turn,
         });
 
-        if( this.props.mode === gameModes['P2P'] ) {
-            this.socket.emit( socketEvents['CS_PawnTransform'], { from: this.state.pawnTransProps.from, to: this.state.pawnTransProps.to, pieceType: pieceType } );
-        } else {
-            this.props.game.move( this.state.pawnTransProps.from, this.state.pawnTransProps.to );
-            this.props.game.setPiece( this.state.pawnTransProps.to, pieceType );
-    
-            this.setState({
-                myTurn: this.props.side === this.props.game.board.configuration.turn
-            })
+        this.startNewTimer();
 
-            this.startNewTimer();
-
-            if( this.props.mode === gameModes['P2E'] ) {    // ai action after select the piece 
-                this.aiMoveAction(this.props.aiLevel);
-            }
+        if (this.props.mode === gameModes['P2E']) {
+            // AI action after selecting the piece
+            this.aiMoveAction(this.props.aiLevel);
         }
     }
+}
+
 
     selectPiece( piece ) {
         if( this.selectedPiece ) {
@@ -1553,106 +1555,101 @@ export default class Scene extends Component {
     }
 
     handleChangeTurn(params) {
-        this.isFinished = params.isFinished ? true : false;
-
+        this.isFinished = !!params.isFinished;
         this.currentTurn = params.currentTurn;
         this.currentPlayer = params.currentPlayer;
-
-        if( this.currentPlayer === this.socket.id ) {
-            this.setState({
-                myTurn: true,
-            })
-            this.side = this.currentTurn;
-        } else {
-            this.side = this.currentTurn === 'white' ? 'black' : 'white';
-            this.setState({
-                myTurn: false,
-            })
-        }
-
+    
+        // Update current side and turn state
+        const isMyTurn = this.currentPlayer === this.socket.id;
+        this.side = isMyTurn ? this.currentTurn : (this.currentTurn === 'white' ? 'black' : 'white');
+        this.setState({ myTurn: isMyTurn });
+    
+        // Update game state properties
         this.dangerKing = params.dangerKing;
         this.lastMoveHistory = params.lastMoveHistory;
-
-        if( params.randomItems ) {
-            if( this.itemMeshes ) {
-                for( let i = 0; i < this.itemMeshes.length; i++ ) {
-                    this.scene.remove( this.itemMeshes[i].mesh );
-                }
-            }
-
+    
+        // Handle random items
+        if (params.randomItems) {
+            this.cleanupItemMeshes(); // Clean up existing meshes
             this.randomItems = params.randomItems;
-
-            this.itemMeshes = [];
-            this.randomItems.forEach((item) => {
-                const newMesh = {};
-                newMesh.position = item.position;
-                newMesh.type = item.type;
-
-                if( newMesh.type !== heroItems['thunderstorm'] ) {
-                    let texture;
-                    if( newMesh.type === heroItems['iceWall'] ) {
-                        texture = new THREE.TextureLoader().load(iceWall);
-                    } else if( newMesh.type === heroItems['petrify'] ) {
-                        texture = new THREE.TextureLoader().load(petrify);
-                    } else if( newMesh.type === heroItems['jumpyShoe'] ) {
-                        texture = new THREE.TextureLoader().load(jumpyShoe);
-                    } else if( newMesh.type === heroItems['springPad'] ) {
-                        texture = new THREE.TextureLoader().load(springPad);
-                    } else if( newMesh.type === heroItems['thunderstorm'] ) {
-                        texture = new THREE.TextureLoader().load(thunderstorm);
-                    }
-    
-                    const itemGeo = new THREE.PlaneBufferGeometry(0.8, 0.8, 100, 100)
-                    const itemMaterial = new THREE.MeshStandardMaterial({
-                        side: THREE.DoubleSide,
-                        roughness: 1,
-                        metalness: 0,
-                        refractionRatio: 0,
-                        map: texture,
-                        transparent: true,
-                    });
-                    const itemMesh = new THREE.Mesh( itemGeo, itemMaterial );
-
-                    itemMesh.rotateX( ang2Rad( this.side === 'white' ? -90 : 90) );
-                    itemMesh.rotateY( ang2Rad( this.side === 'white' ? 0 : 180 ) );
-    
-                    const itemIndex = getMatrixIndexFromFen( newMesh.position );
-                    itemMesh.position.set( itemIndex.colIndex * tileSize - tileSize * 3.5, 0.6, -( itemIndex.rowIndex * tileSize - tileSize * 3.5 ) );
-    
-                    this.scene.add(itemMesh);
-    
-                    newMesh.mesh = itemMesh;
-    
-                    this.itemMeshes.push( newMesh );
-                }
-            })
+            this.itemMeshes = this.randomItems.map(this.createItemMesh.bind(this));
         }
-
-        if( params.userItems ) {
-            const myItems = params.userItems[ this.socket.id ];
-            this.setState({
-                myItems: myItems
-            });
+    
+        // Update user items
+        if (params.userItems) {
+            const myItems = params.userItems[this.socket.id];
+            this.setState({ myItems });
         }
-
-        if( params.obstacleArray ) {
-            this.setObstacles( params.obstacleArray )
+    
+        // Update obstacles
+        if (params.obstacleArray) {
+            this.setObstacles(params.obstacleArray);
         }
-
+    
+        // Reset current state and clear temporary meshes
         this.setState({ currentItem: null });
-        if( this.currentMouseMeshes ) {
-            this.currentMouseMeshes.forEach((item) => {
-                this.scene.remove(item);
-            });
-        }
-
-        if( this.selectedPiece ) {
+        this.cleanupMouseMeshes();
+    
+        // Reset selected piece
+        if (this.selectedPiece) {
             this.selectedPiece.mesh.position.y = this.selectedPiece.currentY;
             this.selectedPiece = null;
         }
         this.possibleMoves = [];
+    
         console.error(params);
     }
+    
+    cleanupItemMeshes() {
+        if (this.itemMeshes) {
+            this.itemMeshes.forEach(item => this.scene.remove(item.mesh));
+        }
+    }
+    
+    cleanupMouseMeshes() {
+        if (this.currentMouseMeshes) {
+            this.currentMouseMeshes.forEach(mesh => this.scene.remove(mesh));
+        }
+    }
+    
+    createItemMesh(item) {
+        const textureMap = {
+            [heroItems['iceWall']]: iceWall,
+            [heroItems['petrify']]: petrify,
+            [heroItems['jumpyShoe']]: jumpyShoe,
+            [heroItems['springPad']]: springPad,
+            [heroItems['thunderstorm']]: thunderstorm,
+        };
+    
+        if (item.type === heroItems['thunderstorm']) return null;
+    
+        const texture = new THREE.TextureLoader().load(textureMap[item.type]);
+        const itemGeo = new THREE.PlaneBufferGeometry(0.8, 0.8, 100, 100);
+        const itemMaterial = new THREE.MeshStandardMaterial({
+            side: THREE.DoubleSide,
+            roughness: 1,
+            metalness: 0,
+            refractionRatio: 0,
+            map: texture,
+            transparent: true,
+        });
+    
+        const itemMesh = new THREE.Mesh(itemGeo, itemMaterial);
+        itemMesh.rotateX(ang2Rad(this.side === 'white' ? -90 : 90));
+        itemMesh.rotateY(ang2Rad(this.side === 'white' ? 0 : 180));
+    
+        const itemIndex = getMatrixIndexFromFen(item.position);
+        itemMesh.position.set(
+            itemIndex.colIndex * tileSize - tileSize * 3.5,
+            0.6,
+            -(itemIndex.rowIndex * tileSize - tileSize * 3.5)
+        );
+    
+        this.scene.add(itemMesh);
+    
+        return { ...item, mesh: itemMesh };
+    }
+    
 
     handleSelectPiece(params) {
         const { fen, possibleMoves } = params;
